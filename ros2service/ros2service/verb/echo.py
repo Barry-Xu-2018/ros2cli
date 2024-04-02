@@ -28,6 +28,7 @@ from ros2service.verb import VerbExtension
 from rosidl_runtime_py import message_to_csv
 from rosidl_runtime_py import message_to_ordereddict
 from rosidl_runtime_py.utilities import get_service
+from rosidl_runtime_py.utilities import get_action
 from service_msgs.msg import ServiceEventInfo
 
 import yaml
@@ -97,14 +98,29 @@ class EchoVerb(VerbExtension):
                     raise RuntimeError(f"The service name '{args.service_name}' is invalid")
         else:
             try:
-                srv_module = get_service(args.service_type)
+                if '/_action/' in args.service_name and not args.service_name.endswith("cancel_goal"):
+                    action_module = get_action(args.service_type)
+                else :
+                    if args.service_name.endswith("/_action/cancel_goal"):
+                        args.service_type = "action_msgs/srv/CancelGoal"
+                    srv_module = get_service(args.service_type)
             except (AttributeError, ModuleNotFoundError, ValueError):
                 raise RuntimeError(f"The service type '{args.service_type}' is invalid")
 
-        if srv_module is None:
-            raise RuntimeError('Could not load the type for the passed service')
-
-        event_msg_type = srv_module.Event
+        event_msg_type = None
+        if '/_action/' in args.service_name and not args.service_name.endswith("cancel_goal"):
+            if action_module is None:
+                raise RuntimeError('Could not load the type for the passed action')
+            if args.service_name.endswith("send_goal"):
+                event_msg_type = action_module.Impl.SendGoalService.Event
+            elif args.service_name.endswith("get_result"):
+                event_msg_type = action_module.Impl.GetResultService.Event
+            else :
+                raise RuntimeError('Unknown service for service')
+        else :
+            if srv_module is None:
+                raise RuntimeError('Could not load the type for the passed service')
+            event_msg_type = srv_module.Event
 
         # TODO(clalancette): We should probably expose this postfix from rclpy
         event_topic_name = args.service_name + '/_service_event'
